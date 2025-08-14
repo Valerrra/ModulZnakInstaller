@@ -1,5 +1,5 @@
 param(
-    [string]$Url = "https://github.com/USERNAME/REPO/releases/latest/download/regime.msi",
+    [string]$Url = "https://github.com/Valerrra/ModulZnakInstaller/releases/download/regime/regime.msi",
     [string]$TempFolder = "C:\Temp",
     [string]$MsiName = "install.msi"
 )
