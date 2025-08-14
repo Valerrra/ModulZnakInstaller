@@ -36,7 +36,7 @@ foreach ($svc in $servicesToStop) {
             Write-Host "Останавливаю службу: $svc"
             Stop-Service -Name $svc -Force
         } catch {
-            Write-Warning "Не удалось остановить службу $svc: $($_.Exception.Message)"
+            Write-Warning "Не удалось остановить службу $svc: $(${_.Exception.Message})"
         }
     }
 }
@@ -53,7 +53,7 @@ foreach ($svc in $servicesToStop) {
             Write-Host "Запускаю службу: $svc"
             Start-Service -Name $svc
         } catch {
-            Write-Warning "Не удалось запустить службу $svc: $($_.Exception.Message)"
+            Write-Warning "Не удалось запустить службу $svc: $(${_.Exception.Message})"
         }
     }
 }
