@@ -25,14 +25,28 @@ try {
     exit 1
 }
 
-# Останавливаем службы перед установкой
+# Останавливаем службы перед установкой и ждём полной остановки
 $services = @("yenisei", "regime")
 Write-Host "⏹ Останавливаю службы перед установкой..."
 foreach ($svc in $services) {
     $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
     if ($s -and $s.Status -eq 'Running') {
         Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-        Write-Host "Служба $svc остановлена."
+        Write-Host "Служба $svc остановлена, ожидаем полной остановки..."
+        
+        # Ждём, пока служба реально остановится, максимум 15 секунд
+        $timeout = 15
+        $elapsed = 0
+        while ((Get-Service -Name $svc).Status -ne 'Stopped' -and $elapsed -lt $timeout) {
+            Start-Sleep -Seconds 1
+            $elapsed++
+        }
+
+        if ((Get-Service -Name $svc).Status -ne 'Stopped') {
+            Write-Warning "⚠️  Служба $svc не остановлена полностью после $timeout секунд, установка может быть некорректной."
+        } else {
+            Write-Host "Служба $svc успешно остановлена."
+        }
     }
 }
 
