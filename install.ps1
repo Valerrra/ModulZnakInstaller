@@ -37,7 +37,7 @@ if (Test-Path -Path $LocalMsiPath) {
 }
 
 # Останавливаем службы перед установкой и ждём полной остановки
-$services = @("yenisei", "regime")
+$services = @("yenisei", "regime", "Apache2.2")
 Write-Host "⏹ Останавливаю службы перед установкой..."
 foreach ($svc in $services) {
     $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
