@@ -17,7 +17,7 @@ function Stop-ServiceSafe($svc) {
             Write-Host "Служба $svc остановлена."
         }
     } catch {
-        Write-Warning ("Не удалось остановить службу {0}: {1}" -f $svc, $_.Exception.Message)
+        Write-Warning ("Не удалось остановить службу {0}. Ошибка: {1}" -f $svc, $_.Exception.Message)
     }
 }
 
@@ -30,7 +30,7 @@ function Start-ServiceSafe($svc) {
             Write-Host "Служба $svc запущена."
         }
     } catch {
-        Write-Warning ("Не удалось запустить службу {0}: {1}" -f $svc, $_.Exception.Message)
+        Write-Warning ("Не удалось запустить службу {0}. Ошибка: {1}" -f $svc, $_.Exception.Message)
     }
 }
 
