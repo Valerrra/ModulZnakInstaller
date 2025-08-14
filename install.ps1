@@ -26,7 +26,7 @@ if (Test-Path -Path $LocalMsiPath) {
     Write-Host "✅ Файл скопирован в $OutputPath"
 } else {
     # Скачиваем MSI
-    Write-Host "📥 Скачиваю $Url ..."
+    Write-Host "📥 Внимание идет обновление модуля Честный знак... Скачиваю $Url ..."
     try {
         Invoke-WebRequest -Uri $Url -OutFile $OutputPath -UseBasicParsing
         Write-Host "✅ Файл скачан: $OutputPath"
