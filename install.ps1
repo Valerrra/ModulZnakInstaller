@@ -1,61 +1,68 @@
-Set-ExecutionPolicy Bypass -Scope Process -Force
-
+# install.ps1
 $ErrorActionPreference = "Stop"
 
-# === Настройки ===
-$downloadUrl = "https://example.com/regime-1.5.0-462.msi"  # ссылка на MSI
-$userDownloads = [Environment]::GetFolderPath("UserProfile") + "\Downloads"
-$installerPath = Join-Path $userDownloads "regime-1.5.0-462.msi"
+# Параметры
+$moduleFileName = "regime-1.5.0-462.msi"
+$moduleDownloadUrl = "https://example.com/$moduleFileName" # <-- замени на свою ссылку
+$downloadsPath = Join-Path $env:USERPROFILE "Downloads"
+$localModulePath = Join-Path $downloadsPath $moduleFileName
+$tempPath = Join-Path $env:TEMP $moduleFileName
 
-# === Проверка наличия файла ===
-if (Test-Path $installerPath) {
-    Write-Host "Файл найден в $userDownloads — пропускаем загрузку."
-} else {
-    Write-Host "Файл не найден — начинаю загрузку..."
-    Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath
-    Write-Host "Файл успешно скачан."
+# Функция остановки службы
+function Stop-ServiceSafe($svc) {
+    try {
+        if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
+            Write-Host "Остановка службы $svc..."
+            Stop-Service -Name $svc -Force -ErrorAction Stop
+            Write-Host "Служба $svc остановлена."
+        }
+    } catch {
+        Write-Warning ("Не удалось остановить службу {0}: {1}" -f $svc, $_.Exception.Message)
+    }
 }
 
-# === Список служб для остановки ===
+# Функция запуска службы
+function Start-ServiceSafe($svc) {
+    try {
+        if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
+            Write-Host "Запуск службы $svc..."
+            Start-Service -Name $svc -ErrorAction Stop
+            Write-Host "Служба $svc запущена."
+        }
+    } catch {
+        Write-Warning ("Не удалось запустить службу {0}: {1}" -f $svc, $_.Exception.Message)
+    }
+}
+
+# Проверяем, есть ли файл в Downloads
+if (Test-Path $localModulePath) {
+    Write-Host "Файл найден в папке Загрузки. Используем его."
+    Copy-Item $localModulePath $tempPath -Force
+} else {
+    Write-Host "Скачивание модуля..."
+    Invoke-WebRequest -Uri $moduleDownloadUrl -OutFile $tempPath
+    Write-Host "Модуль скачан."
+}
+
+# Останавливаем службы перед установкой
 $servicesToStop = @(
     "yenisei",
     "regime",
-    "Apache2.2"
+    "Apache2.2",
+    "1C:Enterprise 8.3 Server Agent"
 )
-
-# Добавляем службы 1С, если есть
-$service1C = Get-Service | Where-Object { $_.Name -like "1C*" -or $_.DisplayName -like "*1C*" }
-if ($service1C) {
-    $servicesToStop += $service1C.Name
-}
-
-# === Остановка служб ===
 foreach ($svc in $servicesToStop) {
-    if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
-        try {
-            Write-Host "Останавливаю службу: $svc"
-            Stop-Service -Name $svc -Force
-        } catch {
-            Write-Warning "Не удалось остановить службу $svc: $(${_.Exception.Message})"
-        }
-    }
+    Stop-ServiceSafe $svc
 }
 
-# === Установка ===
-Write-Host "Запуск установки..."
-Start-Process "msiexec.exe" -ArgumentList "/i `"$installerPath`" /qn /norestart" -Wait
+# Устанавливаем модуль
+Write-Host "Установка модуля..."
+Start-Process msiexec.exe -ArgumentList "/i `"$tempPath`" /qn /norestart" -Wait
 Write-Host "Установка завершена."
 
-# === Запуск служб ===
+# Запускаем службы обратно
 foreach ($svc in $servicesToStop) {
-    if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
-        try {
-            Write-Host "Запускаю службу: $svc"
-            Start-Service -Name $svc
-        } catch {
-            Write-Warning "Не удалось запустить службу $svc: $(${_.Exception.Message})"
-        }
-    }
+    Start-ServiceSafe $svc
 }
 
-Write-Host "Все операции завершены."
+Write-Host "Готово."
