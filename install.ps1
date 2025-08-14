@@ -7,7 +7,11 @@ param(
 # Включаем TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# Путь к файлу MSI
+# Папка Downloads текущего пользователя
+$Downloads = [Environment]::GetFolderPath("UserProfile") + "\Downloads"
+$LocalMsiPath = Join-Path $Downloads "regime-1.5.0-462.msi"
+
+# Путь к файлу MSI для установки
 $OutputPath = Join-Path $TempFolder $MsiName
 
 # Создаём папку Temp, если нет
@@ -15,14 +19,21 @@ if (!(Test-Path -Path $TempFolder)) {
     New-Item -ItemType Directory -Path $TempFolder -Force | Out-Null
 }
 
-# Скачиваем MSI
-Write-Host "📥 Скачиваю $Url ..."
-try {
-    Invoke-WebRequest -Uri $Url -OutFile $OutputPath -UseBasicParsing
-    Write-Host "✅ Файл скачан: $OutputPath"
-} catch {
-    Write-Error "❌ Ошибка скачивания: $($_.Exception.Message)"
-    exit 1
+# Проверяем, есть ли локальный файл
+if (Test-Path -Path $LocalMsiPath) {
+    Write-Host "📂 Локальный файл найден: $LocalMsiPath"
+    Copy-Item -Path $LocalMsiPath -Destination $OutputPath -Force
+    Write-Host "✅ Файл скопирован в $OutputPath"
+} else {
+    # Скачиваем MSI
+    Write-Host "📥 Скачиваю $Url ..."
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $OutputPath -UseBasicParsing
+        Write-Host "✅ Файл скачан: $OutputPath"
+    } catch {
+        Write-Error "❌ Ошибка скачивания: $($_.Exception.Message)"
+        exit 1
+    }
 }
 
 # Останавливаем службы перед установкой и ждём полной остановки
@@ -34,7 +45,6 @@ foreach ($svc in $services) {
         Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
         Write-Host "Служба $svc остановлена, ожидаем полной остановки..."
         
-        # Ждём, пока служба реально остановится, максимум 15 секунд
         $timeout = 15
         $elapsed = 0
         while ((Get-Service -Name $svc).Status -ne 'Stopped' -and $elapsed -lt $timeout) {
