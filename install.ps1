@@ -15,17 +15,6 @@ if (!(Test-Path -Path $TempFolder)) {
     New-Item -ItemType Directory -Path $TempFolder -Force | Out-Null
 }
 
-# Останавливаем службы перед установкой
-$services = @("yenisei", "regime")
-Write-Host "⏹ Останавливаю службы..."
-foreach ($svc in $services) {
-    $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
-    if ($s -and $s.Status -eq 'Running') {
-        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-        Write-Host "Служба $svc остановлена."
-    }
-}
-
 # Скачиваем MSI
 Write-Host "📥 Скачиваю $Url ..."
 try {
@@ -34,6 +23,17 @@ try {
 } catch {
     Write-Error "❌ Ошибка скачивания: $($_.Exception.Message)"
     exit 1
+}
+
+# Останавливаем службы перед установкой
+$services = @("yenisei", "regime")
+Write-Host "⏹ Останавливаю службы перед установкой..."
+foreach ($svc in $services) {
+    $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+    if ($s -and $s.Status -eq 'Running') {
+        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+        Write-Host "Служба $svc остановлена."
+    }
 }
 
 # Устанавливаем MSI тихо
