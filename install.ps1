@@ -31,4 +31,56 @@ if (Test-Path -Path $LocalMsiPath) {
         Invoke-WebRequest -Uri $Url -OutFile $OutputPath -UseBasicParsing
         Write-Host "✅ Файл скачан: $OutputPath"
     } catch {
-        Write-Error "❌ Ошибка ска
+        Write-Error "❌ Ошибка скачивания: $($_.Exception.Message)"
+        exit 1
+    }
+}
+
+# Останавливаем службы перед установкой и ждём полной остановки
+$services = @("yenisei", "regime", "Apache2.2")
+Write-Host "⏹ Останавливаю службы перед установкой..."
+foreach ($svc in $services) {
+    $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+    if ($s -and $s.Status -eq 'Running') {
+        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+        Write-Host "Служба $svc остановлена, ожидаем полной остановки..."
+        
+        $timeout = 15
+        $elapsed = 0
+        while ((Get-Service -Name $svc).Status -ne 'Stopped' -and $elapsed -lt $timeout) {
+            Start-Sleep -Seconds 1
+            $elapsed++
+        }
+
+        if ((Get-Service -Name $svc).Status -ne 'Stopped') {
+            Write-Warning "⚠️  Служба $svc не остановлена полностью после $timeout секунд, установка может быть некорректной."
+        } else {
+            Write-Host "Служба $svc успешно остановлена."
+        }
+    }
+}
+
+# Устанавливаем MSI тихо
+Write-Host "⚙️  Устанавливаю модуль..."
+$Arguments = "/i `"$OutputPath`" /qn ADMINUSER=`"Modulznak`" ADMINPASSWORD=`"7]QI<&Oo!\jsy%3`" SERVERURL=`"https://rsapi.crpt.ru`" AUTOSERVICE=`"1`""
+Start-Process "msiexec.exe" -ArgumentList $Arguments -Wait -NoNewWindow
+
+# Запускаем службы после установки
+Write-Host "▶ Запускаю службы..."
+foreach ($svc in $services) {
+    $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+    if ($s -and $s.Status -ne 'Running') {
+        Start-Service -Name $svc -ErrorAction SilentlyContinue
+        Write-Host "Служба $svc запущена."
+    }
+}
+
+# 🚀 Запускаем автообновление в тихом режиме
+$installer = "C:\Program Files\Regime\bin\InstallAutoUpdateLM.exe"
+if (Test-Path $installer) {
+    Write-Host "🔄 Запускаю InstallAutoUpdateLM.exe /S ..."
+    try {
+        Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow
+        Write-Host "✅ Автообновление выполнено."
+    } catch {
+        Write-Warn
