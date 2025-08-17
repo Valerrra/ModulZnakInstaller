@@ -62,7 +62,7 @@ foreach ($svc in $services) {
 
 # Устанавливаем MSI модуля в тихом режиме
 Write-Host "⚙️  Устанавливаю модуль..."
-$Arguments = "/i `"$OutputPath`" /qn ADMINUSER=`"Modulznak`" ADMINPASSWORD=`"7]QI<&Oo!\jsy%3`" SERVERURL=`"https://rsapi.crpt.ru`" AUTOSERVICE=`"1`""
+$Arguments = "/i `"$OutputPath`" /passive ADMINUSER=`"Modulznak`" ADMINPASSWORD=`"7]QI<&Oo!\jsy%3`" SERVERURL=`"https://rsapi.crpt.ru`" AUTOSERVICE=`"1`""
 Start-Process "msiexec.exe" -ArgumentList $Arguments -Wait -NoNewWindow
 
 # Устанавливаем автоапдейтера в тихом режиме
