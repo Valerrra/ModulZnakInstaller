@@ -83,4 +83,14 @@ if (Test-Path $installer) {
         Start-Process -FilePath $installer -ArgumentList "/S" -Wait -NoNewWindow
         Write-Host "✅ Автообновление выполнено."
     } catch {
-        Write-Warn
+        Write-Warning "⚠️ Ошибка при запуске автообновления: $($_.Exception.Message)"
+    }
+} else {
+    Write-Warning "❌ InstallAutoUpdateLM.exe не найден в $installer"
+}
+
+Write-Host "🏁 Установка и автообновление завершены!"
+Write-Host "🔁 Выполняется автоматическая перезагрузка..."
+
+# Перезагрузка системы
+Restart-Computer -Force
