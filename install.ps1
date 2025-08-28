@@ -9,7 +9,7 @@ if (-Not (Test-Path $tempDir)) {
     New-Item -Path $tempDir -ItemType Directory | Out-Null
 }
 
-# URL установщика (пример, подставь свой)
+# URL установщика
 $installerUrl = "https://github.com/Valerrra/ModulZnakInstaller/releases/tag/regime"
 $installer = Join-Path $tempDir "InstallAutoUpdateLM.exe"
 
