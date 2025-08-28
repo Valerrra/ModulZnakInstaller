@@ -48,7 +48,7 @@ foreach ($svc in $servicesToStop) { Stop-ServiceSafe $svc }
 
 # Установка модуля в тихом режиме с параметрами пользователя ARED
 Write-Host "Устанавливаю модуль..."
-$Arguments = "/i `"$OutputPath`" /qb ADMINUSER=`"Modulznak`" ADMINPASSWORD=`"7]QI<&Oo!\jsy%3`" SERVERURL=`"https://rsapi.crpt.ru`" AUTOSERVICE=`"1`""
+$Arguments = "/i `"$OutputPath`" /qn ADMINUSER=`"Modulznak`" ADMINPASSWORD=`"7]QI<&Oo!\jsy%3`" SERVERURL=`"https://rsapi.crpt.ru`" AUTOSERVICE=`"1`""
 Start-Process "msiexec.exe" -ArgumentList $Arguments -Wait -NoNewWindow
 Write-Host "Установка завершена."
 
