@@ -1,50 +1,66 @@
 # install.ps1
-# Установка локального модуля в автоматическом режиме
-
 $ErrorActionPreference = "Stop"
 
-# Папка для временных файлов
-$tempDir = "$env:TEMP\ModulZnakInstaller"
-if (-Not (Test-Path $tempDir)) {
-    New-Item -Path $tempDir -ItemType Directory | Out-Null
-}
+# Параметры
+$moduleFileName = "regime.msi"
+$moduleDownloadUrl = "https://github.com/Valerrra/ModulZnakInstaller/releases/download/regime/regime.msi"
+$downloadsPath = Join-Path $env:USERPROFILE "Downloads"
+$localModulePath = Join-Path $downloadsPath $moduleFileName
+$tempPath = Join-Path $env:TEMP $moduleFileName
 
-# URL установщика (MSI в Release)
-$installerUrl = "https://github.com/Valerrra/ModulZnakInstaller/releases/download/regime/regime.msi"
-$installer = Join-Path $tempDir "regime.msi"
-
-# Скачивание установщика
-try {
-    Write-Host "Скачиваю установщик..."
-    Invoke-WebRequest -Uri $installerUrl -OutFile $installer -UseBasicParsing
-    Write-Host "Файл сохранён: $installer"
-}
-catch {
-    Write-Host "Ошибка при скачивании: $_"
-    Exit 1
-}
-
-# Запуск автоматической установки
-try {
-    Write-Host "Запускаю установку (автоматический режим)..."
-    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$installer`" /qn /norestart" -Wait -PassThru
-    Write-Host "Установка завершена"
-}
-catch {
-    Write-Host "Ошибка при установке: $_"
-    Exit 1
-}
-
-# Очистка временных файлов
-try {
-    if (Test-Path $installer) {
-        Remove-Item $installer -Force
+# Функция остановки службы
+function Stop-ServiceSafe($svc) {
+    try {
+        if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
+            Write-Host "Остановка службы $svc..."
+            Stop-Service -Name $svc -Force -ErrorAction Stop
+            Write-Host "Служба $svc остановлена."
+        }
+    } catch {
+        Write-Warning ("Не удалось остановить службу {0}. Ошибка: {1}" -f $svc, $_.Exception.Message)
     }
-    if (Test-Path $tempDir) {
-        Remove-Item $tempDir -Force -Recurse
+}
+
+# Функция запуска службы
+function Start-ServiceSafe($svc) {
+    try {
+        if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
+            Write-Host "Запуск службы $svc..."
+            Start-Service -Name $svc -ErrorAction Stop
+            Write-Host "Служба $svc запущена."
+        }
+    } catch {
+        Write-Warning ("Не удалось запустить службу {0}. Ошибка: {1}" -f $svc, $_.Exception.Message)
     }
-    Write-Host "Временные файлы удалены"
 }
-catch {
-    Write-Host "Не удалось удалить временные файлы: $_"
+
+# Проверяем, есть ли файл в Downloads
+if (Test-Path $localModulePath) {
+    Write-Host "Файл найден в папке Загрузки. Используем его."
+    Copy-Item $localModulePath $tempPath -Force
+} else {
+    Write-Host "Скачивание модуля..."
+    Invoke-WebRequest -Uri $moduleDownloadUrl -OutFile $tempPath
+    Write-Host "Модуль скачан."
 }
+
+# Останавливаем только нужные службы
+$servicesToStop = @(
+    "yenisei",
+    "regime"
+)
+foreach ($svc in $servicesToStop) {
+    Stop-ServiceSafe $svc
+}
+
+# Устанавливаем модуль
+Write-Host "Установка модуля..."
+Start-Process msiexec.exe -ArgumentList "/i `"$tempPath`" /qn /norestart" -Wait
+Write-Host "Установка завершена."
+
+# Запускаем службы обратно
+foreach ($svc in $servicesToStop) {
+    Start-ServiceSafe $svc
+}
+
+Write-Host "Готово."
