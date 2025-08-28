@@ -6,9 +6,19 @@ $moduleFileName = "regime.msi"
 $moduleDownloadUrl = "https://github.com/Valerrra/ModulZnakInstaller/releases/download/regime/regime.msi"
 $downloadsPath = Join-Path $env:USERPROFILE "Downloads"
 $localModulePath = Join-Path $downloadsPath $moduleFileName
-$tempPath = Join-Path $env:TEMP $moduleFileName
+$OutputPath = Join-Path $env:TEMP $moduleFileName
 
-# Функции остановки/запуска служб (только для yenisei и regime)
+# Проверка файла в Downloads
+if (Test-Path $localModulePath) {
+    Write-Host "Файл найден в Загрузках. Используем его."
+    Copy-Item $localModulePath $OutputPath -Force
+} else {
+    Write-Host "Скачивание модуля..."
+    Invoke-WebRequest -Uri $moduleDownloadUrl -OutFile $OutputPath
+    Write-Host "Модуль скачан."
+}
+
+# Останавливаем службы (только yenisei и regime)
 function Stop-ServiceSafe($svc) {
     try {
         if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
@@ -33,23 +43,13 @@ function Start-ServiceSafe($svc) {
     }
 }
 
-# Проверка файла в Downloads
-if (Test-Path $localModulePath) {
-    Write-Host "Файл найден в Загрузках. Используем его."
-    Copy-Item $localModulePath $tempPath -Force
-} else {
-    Write-Host "Скачивание модуля..."
-    Invoke-WebRequest -Uri $moduleDownloadUrl -OutFile $tempPath
-    Write-Host "Модуль скачан."
-}
-
-# Останавливаем службы
 $servicesToStop = @("yenisei", "regime")
 foreach ($svc in $servicesToStop) { Stop-ServiceSafe $svc }
 
-# Установка модуля (автоматическая, с индикатором прогресса)
-Write-Host "Установка модуля..."
-Start-Process msiexec.exe -ArgumentList "/i `"$tempPath`" USER=ARED PASSWORD=Ared2025 /qb /norestart" -Wait
+# Установка модуля в тихом режиме с параметрами пользователя ARED
+Write-Host "Устанавливаю модуль..."
+$Arguments = "/i `"$OutputPath`" /qb ADMINUSER=`"ARED`" ADMINPASSWORD=`"Ared2025`" SERVERURL=`"https://rsapi.crpt.ru`" AUTOSERVICE=`"1`""
+Start-Process "msiexec.exe" -ArgumentList $Arguments -Wait -NoNewWindow
 Write-Host "Установка завершена."
 
 # Запуск служб обратно
