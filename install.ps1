@@ -10,7 +10,7 @@ if (-Not (Test-Path $tempDir)) {
 }
 
 # URL установщика (пример, подставь свой)
-$installerUrl = "https://update.crpt.ru/InstallAutoUpdateLM.exe"
+$installerUrl = "https://github.com/Valerrra/ModulZnakInstaller/releases/tag/regime"
 $installer = Join-Path $tempDir "InstallAutoUpdateLM.exe"
 
 # Скачивание установщика
