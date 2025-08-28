@@ -8,6 +8,7 @@ $downloadsPath = Join-Path $env:USERPROFILE "Downloads"
 $localModulePath = Join-Path $downloadsPath $moduleFileName
 $tempPath = Join-Path $env:TEMP $moduleFileName
 
+# Функции остановки/запуска служб (только для yenisei и regime)
 function Stop-ServiceSafe($svc) {
     try {
         if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
@@ -32,9 +33,9 @@ function Start-ServiceSafe($svc) {
     }
 }
 
-# Проверка наличия MSI в Загрузках
+# Проверка файла в Downloads
 if (Test-Path $localModulePath) {
-    Write-Host "Файл найден в папке Загрузки. Используем его."
+    Write-Host "Файл найден в Загрузках. Используем его."
     Copy-Item $localModulePath $tempPath -Force
 } else {
     Write-Host "Скачивание модуля..."
@@ -42,20 +43,16 @@ if (Test-Path $localModulePath) {
     Write-Host "Модуль скачан."
 }
 
-# Останавливаем только yenisei и regime
+# Останавливаем службы
 $servicesToStop = @("yenisei", "regime")
-foreach ($svc in $servicesToStop) {
-    Stop-ServiceSafe $svc
-}
+foreach ($svc in $servicesToStop) { Stop-ServiceSafe $svc }
 
-# Установка с автоподстановкой логина/пароля (но с мастером)
+# Установка модуля (автоматическая, с индикатором прогресса)
 Write-Host "Установка модуля..."
-Start-Process msiexec.exe -ArgumentList "/i `"$tempPath`" USER=ARED PASSWORD=Ared2025 /norestart" -Wait
+Start-Process msiexec.exe -ArgumentList "/i `"$tempPath`" USER=ARED PASSWORD=Ared2025 /qb /norestart" -Wait
 Write-Host "Установка завершена."
 
 # Запуск служб обратно
-foreach ($svc in $servicesToStop) {
-    Start-ServiceSafe $svc
-}
+foreach ($svc in $servicesToStop) { Start-ServiceSafe $svc }
 
 Write-Host "Готово."
