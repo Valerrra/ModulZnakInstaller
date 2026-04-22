@@ -13,13 +13,95 @@ param(
     [string]$ProxyPass,
     [string]$LogPath = "C:\Temp\install.log",
     [switch]$Reinstall,
+    [switch]$CleanInstall,
     [switch]$SkipAutoUpdater,
+    [switch]$StrictAutoUpdater,
     [string]$AutoUpdaterPath,
     [int]$AutoUpdaterWaitSeconds = 20,
+    [string]$AutoUpdaterLogPath = "C:\Temp\InstallAutoUpdateLM.log",
     [string]$InitToken,
     [string]$ClientId,
     [int]$ApiPort = 5995
 )
+
+function Invoke-MsiProcess {
+    param(
+        [string[]]$Arguments
+    )
+
+    $process = Start-Process "msiexec.exe" -ArgumentList ($Arguments -join " ") -Wait -NoNewWindow -PassThru
+    return $process.ExitCode
+}
+
+function Get-LmProductCode {
+    $uninstallRoots = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+
+    foreach ($root in $uninstallRoots) {
+        $item = Get-ItemProperty -Path $root -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -eq "Локальный модуль Честный Знак" } |
+            Select-Object -First 1
+        if ($item -and $item.PSChildName) {
+            return $item.PSChildName
+        }
+    }
+
+    return "{6925DB33-0924-457F-84DD-71866268DC29}"
+}
+
+function Remove-LmInstallation {
+    param(
+        [string]$ApplicationFolder,
+        [string]$TempFolder,
+        [string]$LogPath
+    )
+
+    $productCode = Get-LmProductCode
+    Write-Host " Выполняю полное удаление ЛМ ЧЗ: $productCode"
+
+    $uninstallLogPath = Join-Path $TempFolder "uninstall-regime.log"
+    $uninstallArguments = @(
+        "/x"
+        $productCode
+        "/qn"
+        "/norestart"
+        "/l*v"
+        "`"$uninstallLogPath`""
+    )
+
+    $uninstallExitCode = Invoke-MsiProcess -Arguments $uninstallArguments
+    if ($uninstallExitCode -notin @(0, 1605, 1614, 3010)) {
+        throw "Удаление MSI завершилось с кодом $uninstallExitCode."
+    }
+    if ($uninstallExitCode -eq 3010) {
+        Write-Warning "  Удаление ЛМ ЧЗ запросило перезагрузку."
+    }
+
+    foreach ($svc in @("yenisei", "regime", "Apache2.2")) {
+        $service = Get-Service -Name $svc -ErrorAction SilentlyContinue
+        if ($service) {
+            Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+            & sc.exe delete $svc | Out-Null
+            Write-Host "  Служба $svc удалена."
+        }
+    }
+
+    Get-Process -Name "epmd" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+    $pathsToRemove = @(
+        $ApplicationFolder,
+        "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Честный Знак"
+    )
+
+    foreach ($path in $pathsToRemove) {
+        if (Test-Path -Path $path) {
+            Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "  Удалён остаток: $path"
+        }
+    }
+}
 
 function Find-AutoUpdaterInstaller {
     param(
@@ -61,6 +143,29 @@ function Find-AutoUpdaterInstaller {
     } while ((Get-Date) -lt $deadline)
 
     return $null
+}
+
+function Test-MsiAutoUpdaterInstalled {
+    param(
+        [string]$LogPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($LogPath) -or -not (Test-Path -Path $LogPath)) {
+        return $false
+    }
+
+    $patterns = @(
+        "InstallAutoApdater. Код возврата 0",
+        "Action ended .*InstallAutoApdater.*Return value 0"
+    )
+
+    foreach ($pattern in $patterns) {
+        if (Select-String -Path $LogPath -Pattern $pattern -Quiet -SimpleMatch:$false) {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 # Включаем TLS 1.2
@@ -118,6 +223,10 @@ foreach ($svc in $services) {
     }
 }
 
+if ($CleanInstall) {
+    Remove-LmInstallation -ApplicationFolder $ApplicationFolder -TempFolder $TempFolder -LogPath $LogPath
+}
+
 # Устанавливаем MSI модуля в тихом режиме
 Write-Host "  Устанавливаю модуль..."
 $msiArguments = @(
@@ -156,26 +265,40 @@ if (-not [string]::IsNullOrWhiteSpace($LogPath)) {
     $msiArguments += "`"$LogPath`""
 }
 
-$msiProcess = Start-Process "msiexec.exe" -ArgumentList ($msiArguments -join " ") -Wait -NoNewWindow -PassThru
-if ($msiProcess.ExitCode -ne 0) {
-    throw "Установка MSI завершилась с кодом $($msiProcess.ExitCode)."
+$msiExitCode = Invoke-MsiProcess -Arguments $msiArguments
+if ($msiExitCode -ne 0) {
+    throw "Установка MSI завершилась с кодом $msiExitCode."
 }
 
 # Устанавливаем автоапдейтера в тихом режиме
+$msiInstalledAutoUpdater = Test-MsiAutoUpdaterInstalled -LogPath $LogPath
 $ResolvedUpdaterPath = Find-AutoUpdaterInstaller -ApplicationFolder $ApplicationFolder -TempFolder $TempFolder -ExplicitPath $AutoUpdaterPath -WaitSeconds $AutoUpdaterWaitSeconds
-if (-not $SkipAutoUpdater -and $ResolvedUpdaterPath) {
+if (-not $SkipAutoUpdater -and $msiInstalledAutoUpdater) {
+    Write-Host "  MSI уже установил автоапдейтер, повторный запуск пропускаю."
+} elseif (-not $SkipAutoUpdater -and $ResolvedUpdaterPath) {
     Write-Host "  Устанавливаю автоапдейтера в тихом режиме..."
     Write-Host "  Найден установщик автообновления: $ResolvedUpdaterPath"
-    $updaterProcess = Start-Process $ResolvedUpdaterPath -ArgumentList "/qn /norestart" -Wait -NoNewWindow -PassThru
+    $autoUpdaterStdOutLogPath = [System.IO.Path]::ChangeExtension($AutoUpdaterLogPath, ".stdout.log")
+    $autoUpdaterStdErrLogPath = [System.IO.Path]::ChangeExtension($AutoUpdaterLogPath, ".stderr.log")
+    $updaterProcess = Start-Process $ResolvedUpdaterPath -ArgumentList "/qn /norestart" -Wait -PassThru -RedirectStandardOutput $autoUpdaterStdOutLogPath -RedirectStandardError $autoUpdaterStdErrLogPath
     if ($updaterProcess.ExitCode -notin @(0, 3010)) {
-        throw "Установка автоапдейтера завершилась с кодом $($updaterProcess.ExitCode)."
+        $message = "Установка автоапдейтера завершилась с кодом $($updaterProcess.ExitCode). Логи: $autoUpdaterStdOutLogPath ; $autoUpdaterStdErrLogPath"
+        if ($StrictAutoUpdater) {
+            throw $message
+        }
+        Write-Warning "  $message"
+    } else {
+        Write-Host " Автоапдейтер установлен."
     }
     if ($updaterProcess.ExitCode -eq 3010) {
         Write-Warning "  Автоапдейтер установлен, но запрошена перезагрузка."
     }
-    Write-Host " Автоапдейтер установлен."
 } elseif (-not $SkipAutoUpdater) {
-    Write-Warning "  InstallAutoUpdateLM.exe не найден. По MSI-логу внутренний шаг автообновления мог быть пропущен условием, поэтому проверьте наличие установщика автоапдейтера отдельно."
+    $message = "InstallAutoUpdateLM.exe не найден. По MSI-логу внутренний шаг автообновления мог быть пропущен условием."
+    if ($StrictAutoUpdater) {
+        throw $message
+    }
+    Write-Warning "  $message"
 }
 
 # Запускаем службы после установки
