@@ -49,10 +49,13 @@ if (Test-Path -Path $LocalMsiPath) {
 
 # Останавливаем службы перед установкой и ждём полной остановки
 $services = @("yenisei", "regime", "Apache2.2")
+$runningServicesBeforeInstall = @{}
 Write-Host " Останавливаю службы перед установкой..."
 foreach ($svc in $services) {
     $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+    $runningServicesBeforeInstall[$svc] = $false
     if ($s -and $s.Status -eq 'Running') {
+        $runningServicesBeforeInstall[$svc] = $true
         Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
         Write-Host "Служба $svc остановлена, ожидаем полной остановки..."
         
@@ -130,10 +133,43 @@ if (-not $SkipAutoUpdater -and (Test-Path $UpdaterPath)) {
 # Запускаем службы после установки
 Write-Host " Запускаю службы..."
 foreach ($svc in $services) {
-    $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
-    if ($s -and $s.Status -ne 'Running') {
+    if (-not $runningServicesBeforeInstall[$svc]) {
+        continue
+    }
+
+    $timeout = 30
+    $elapsed = 0
+    $s = $null
+
+    while (-not $s -and $elapsed -lt $timeout) {
+        Start-Sleep -Seconds 1
+        $elapsed++
+        $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+    }
+
+    if (-not $s) {
+        Write-Warning "  Служба $svc не найдена после установки."
+        continue
+    }
+
+    if ($s.Status -ne 'Running') {
         Start-Service -Name $svc -ErrorAction SilentlyContinue
-        Write-Host "Служба $svc запущена."
+
+        $startTimeout = 30
+        $startElapsed = 0
+        while ((Get-Service -Name $svc -ErrorAction SilentlyContinue).Status -ne 'Running' -and $startElapsed -lt $startTimeout) {
+            Start-Sleep -Seconds 1
+            $startElapsed++
+        }
+
+        $startedService = Get-Service -Name $svc -ErrorAction SilentlyContinue
+        if ($startedService -and $startedService.Status -eq 'Running') {
+            Write-Host "Служба $svc запущена."
+        } else {
+            Write-Warning "  Служба $svc не перешла в состояние Running."
+        }
+    } else {
+        Write-Host "Служба $svc уже запущена."
     }
 }
 
