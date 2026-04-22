@@ -21,7 +21,9 @@ param(
     [string]$AutoUpdaterLogPath = "C:\Temp\InstallAutoUpdateLM.log",
     [string]$InitToken,
     [string]$ClientId,
-    [int]$ApiPort = 5995
+    [int]$ApiPort = 5995,
+    [int]$InitWaitTimeoutSeconds = 600,
+    [int]$InitPollIntervalSeconds = 5
 )
 
 function Invoke-MsiProcess {
@@ -143,6 +145,96 @@ function Find-AutoUpdaterInstaller {
     } while ((Get-Date) -lt $deadline)
 
     return $null
+}
+
+function New-LmApiHeaders {
+    param(
+        [string]$AdminUser,
+        [string]$AdminPassword,
+        [string]$ClientId
+    )
+
+    $pair = "{0}:{1}" -f $AdminUser, $AdminPassword
+    $basicAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
+    $headers = @{
+        Accept        = "application/json"
+        Authorization = "Basic $basicAuth"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ClientId)) {
+        $headers["X-ClientId"] = $ClientId
+    }
+
+    return $headers
+}
+
+function Get-LmStatusValue {
+    param(
+        $Response
+    )
+
+    if ($null -eq $Response) {
+        return $null
+    }
+
+    foreach ($propertyName in @("status", "state")) {
+        if ($Response.PSObject.Properties.Name -contains $propertyName) {
+            $value = $Response.$propertyName
+            if (-not [string]::IsNullOrWhiteSpace($value)) {
+                return [string]$value
+            }
+        }
+    }
+
+    if ($Response.PSObject.Properties.Name -contains "data" -and $null -ne $Response.data) {
+        foreach ($propertyName in @("status", "state")) {
+            if ($Response.data.PSObject.Properties.Name -contains $propertyName) {
+                $value = $Response.data.$propertyName
+                if (-not [string]::IsNullOrWhiteSpace($value)) {
+                    return [string]$value
+                }
+            }
+        }
+    }
+
+    return $null
+}
+
+function Wait-LmInitialization {
+    param(
+        [hashtable]$Headers,
+        [int]$ApiPort,
+        [int]$TimeoutSeconds,
+        [int]$PollIntervalSeconds
+    )
+
+    $statusUrl = "http://127.0.0.1:$ApiPort/api/v1/status"
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    do {
+        try {
+            $statusResponse = Invoke-RestMethod -Uri $statusUrl -Method Get -Headers $Headers
+        } catch {
+            throw "Ошибка проверки статуса через $statusUrl : $($_.Exception.Message)"
+        }
+
+        $statusValue = Get-LmStatusValue -Response $statusResponse
+        if ([string]::IsNullOrWhiteSpace($statusValue)) {
+            Write-Warning "  Не удалось определить состояние инициализации, повторяю опрос."
+        } else {
+            Write-Host "  Статус ЛМ ЧЗ: $statusValue"
+            switch ($statusValue.ToLowerInvariant()) {
+                "ready" { return }
+                "sync_error" { throw "Инициализация завершилась состоянием sync_error." }
+            }
+        }
+
+        if ((Get-Date) -ge $deadline) {
+            throw "Таймаут ожидания инициализации ЛМ ЧЗ ($TimeoutSeconds сек.)."
+        }
+
+        Start-Sleep -Seconds $PollIntervalSeconds
+    } while ($true)
 }
 
 function Test-MsiAutoUpdaterInstalled {
@@ -347,22 +439,13 @@ foreach ($svc in $services) {
 if (-not [string]::IsNullOrWhiteSpace($InitToken)) {
     Write-Host " Выполняю инициализацию ЛМ ЧЗ..."
 
-    $pair = "{0}:{1}" -f $AdminUser, $AdminPassword
-    $basicAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes($pair))
-    $headers = @{
-        Accept        = "application/json"
-        Authorization = "Basic $basicAuth"
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($ClientId)) {
-        $headers["X-ClientId"] = $ClientId
-    }
-
+    $headers = New-LmApiHeaders -AdminUser $AdminUser -AdminPassword $AdminPassword -ClientId $ClientId
     $initUrl = "http://127.0.0.1:$ApiPort/api/v1/init"
     $body = @{ token = $InitToken } | ConvertTo-Json
 
     try {
         Invoke-RestMethod -Uri $initUrl -Method Post -Headers $headers -ContentType "application/json" -Body $body
+        Wait-LmInitialization -Headers $headers -ApiPort $ApiPort -TimeoutSeconds $InitWaitTimeoutSeconds -PollIntervalSeconds $InitPollIntervalSeconds
         Write-Host " Инициализация завершена."
     } catch {
         throw "Ошибка инициализации через $initUrl : $($_.Exception.Message)"
