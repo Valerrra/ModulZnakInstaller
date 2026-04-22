@@ -1,0 +1,5 @@
+*.msi
+*.log
+*.zip
+*.tgz
+ReleaseAssets/
