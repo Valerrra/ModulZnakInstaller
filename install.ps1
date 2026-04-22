@@ -14,10 +14,54 @@ param(
     [string]$LogPath = "C:\Temp\install.log",
     [switch]$Reinstall,
     [switch]$SkipAutoUpdater,
+    [string]$AutoUpdaterPath,
+    [int]$AutoUpdaterWaitSeconds = 20,
     [string]$InitToken,
     [string]$ClientId,
     [int]$ApiPort = 5995
 )
+
+function Find-AutoUpdaterInstaller {
+    param(
+        [string]$ApplicationFolder,
+        [string]$TempFolder,
+        [string]$ExplicitPath,
+        [int]$WaitSeconds
+    )
+
+    $candidatePaths = @()
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        $candidatePaths += $ExplicitPath
+    }
+
+    $candidatePaths += @(
+        (Join-Path $ApplicationFolder "bin\InstallAutoUpdateLM.exe"),
+        (Join-Path $ApplicationFolder "InstallAutoUpdateLM.exe"),
+        (Join-Path $TempFolder "InstallAutoUpdateLM.exe"),
+        (Join-Path "$([Environment]::GetFolderPath('UserProfile'))\Downloads" "InstallAutoUpdateLM.exe")
+    )
+
+    $deadline = (Get-Date).AddSeconds($WaitSeconds)
+    do {
+        foreach ($path in ($candidatePaths | Select-Object -Unique)) {
+            if (-not [string]::IsNullOrWhiteSpace($path) -and (Test-Path -Path $path)) {
+                return $path
+            }
+        }
+
+        if (Test-Path -Path $ApplicationFolder) {
+            $found = Get-ChildItem -Path $ApplicationFolder -Filter "InstallAutoUpdateLM.exe" -File -Recurse -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty FullName
+            if ($found) {
+                return $found
+            }
+        }
+
+        Start-Sleep -Seconds 1
+    } while ((Get-Date) -lt $deadline)
+
+    return $null
+}
 
 # Включаем TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -118,16 +162,20 @@ if ($msiProcess.ExitCode -ne 0) {
 }
 
 # Устанавливаем автоапдейтера в тихом режиме
-$UpdaterPath = Join-Path $ApplicationFolder "bin\InstallAutoUpdateLM.exe"
-if (-not $SkipAutoUpdater -and (Test-Path $UpdaterPath)) {
+$ResolvedUpdaterPath = Find-AutoUpdaterInstaller -ApplicationFolder $ApplicationFolder -TempFolder $TempFolder -ExplicitPath $AutoUpdaterPath -WaitSeconds $AutoUpdaterWaitSeconds
+if (-not $SkipAutoUpdater -and $ResolvedUpdaterPath) {
     Write-Host "  Устанавливаю автоапдейтера в тихом режиме..."
-    $updaterProcess = Start-Process $UpdaterPath -ArgumentList "/qn /norestart" -Wait -NoNewWindow -PassThru
-    if ($updaterProcess.ExitCode -ne 0) {
+    Write-Host "  Найден установщик автообновления: $ResolvedUpdaterPath"
+    $updaterProcess = Start-Process $ResolvedUpdaterPath -ArgumentList "/qn /norestart" -Wait -NoNewWindow -PassThru
+    if ($updaterProcess.ExitCode -notin @(0, 3010)) {
         throw "Установка автоапдейтера завершилась с кодом $($updaterProcess.ExitCode)."
+    }
+    if ($updaterProcess.ExitCode -eq 3010) {
+        Write-Warning "  Автоапдейтер установлен, но запрошена перезагрузка."
     }
     Write-Host " Автоапдейтер установлен."
 } elseif (-not $SkipAutoUpdater) {
-    Write-Warning "  Файл InstallAutoUpdateLM.exe не найден по пути $UpdaterPath"
+    Write-Warning "  InstallAutoUpdateLM.exe не найден. По MSI-логу внутренний шаг автообновления мог быть пропущен условием, поэтому проверьте наличие установщика автоапдейтера отдельно."
 }
 
 # Запускаем службы после установки
