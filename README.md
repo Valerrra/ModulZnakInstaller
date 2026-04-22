@@ -18,10 +18,22 @@ powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https
 powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Valerrra/ModulZnakInstaller/main/install.ps1))) -Reinstall -InitToken 'ВАШ_INIT_TOKEN' -ClientId 'ВАШ_CLIENT_ID'"
 ```
 
+Переустановка с инициализацией по ключу активации:
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Valerrra/ModulZnakInstaller/main/install.ps1))) -Reinstall -ActivationKey 'ВАШ_КЛЮЧ_АКТИВАЦИИ' -ClientId 'ВАШ_CLIENT_ID'"
+```
+
 То же с явным таймаутом ожидания:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Valerrra/ModulZnakInstaller/main/install.ps1))) -Reinstall -InitToken 'ВАШ_INIT_TOKEN' -ClientId 'ВАШ_CLIENT_ID' -InitWaitTimeoutSeconds 600 -InitPollIntervalSeconds 5"
+```
+
+То же для `ActivationKey`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Valerrra/ModulZnakInstaller/main/install.ps1))) -Reinstall -ActivationKey 'ВАШ_КЛЮЧ_АКТИВАЦИИ' -ClientId 'ВАШ_CLIENT_ID' -InitWaitTimeoutSeconds 600 -InitPollIntervalSeconds 5"
 ```
 
 Что хранится в репозитории:
