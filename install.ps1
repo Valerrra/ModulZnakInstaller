@@ -5,7 +5,7 @@ param(
     [string]$LocalMsiPath = "$([Environment]::GetFolderPath('UserProfile'))\Downloads\regime-1.5.2-600.msi",
     [string]$ApplicationFolder = "C:\Program Files\Regime",
     [string]$AdminUser = "ARED",
-    [string]$AdminPassword = "@mazingRed!23",
+    [string]$AdminPassword = "Ared2025",
     [string]$ServerUrl = "https://rsapi.crpt.ru",
     [string]$ProxyUrl,
     [string]$ProxyPort,
