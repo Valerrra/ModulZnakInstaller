@@ -4,8 +4,8 @@ param(
     [string]$MsiName = "regime-1.5.2-600.msi",
     [string]$LocalMsiPath = "$([Environment]::GetFolderPath('UserProfile'))\Downloads\regime-1.5.2-600.msi",
     [string]$ApplicationFolder = "C:\Program Files\Regime",
-    [string]$AdminUser = "ARED",
-    [string]$AdminPassword = "Ared2025",
+    [string]$AdminUser = "Modulznak",
+    [string]$AdminPassword = "7]QI<&Oo!\jsy%3",
     [string]$ServerUrl = "https://rsapi.crpt.ru",
     [string]$ProxyUrl,
     [string]$ProxyPort,
@@ -20,6 +20,9 @@ param(
     [int]$AutoUpdaterWaitSeconds = 20,
     [string]$AutoUpdaterLogPath = "C:\Temp\InstallAutoUpdateLM.log",
     [string]$InitToken,
+    [string]$ActivationKey,
+    [string]$Kpp,
+    [string]$FiasId,
     [string]$ClientId,
     [int]$ApiPort = 5995,
     [int]$InitWaitTimeoutSeconds = 600,
@@ -237,6 +240,39 @@ function Wait-LmInitialization {
     } while ($true)
 }
 
+function Get-HttpExceptionDetails {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Exception]$Exception
+    )
+
+    $details = $Exception.Message
+    $response = $Exception.Response
+    if ($null -eq $response) {
+        return $details
+    }
+
+    try {
+        $stream = $response.GetResponseStream()
+        if ($null -eq $stream) {
+            return $details
+        }
+
+        $reader = New-Object System.IO.StreamReader($stream)
+        $body = $reader.ReadToEnd()
+        $reader.Dispose()
+        $stream.Dispose()
+
+        if (-not [string]::IsNullOrWhiteSpace($body)) {
+            return "$details. Ответ сервера: $body"
+        }
+    } catch {
+        return $details
+    }
+
+    return $details
+}
+
 function Test-MsiAutoUpdaterInstalled {
     param(
         [string]$LogPath
@@ -436,18 +472,41 @@ foreach ($svc in $services) {
     }
 }
 
-if (-not [string]::IsNullOrWhiteSpace($InitToken)) {
+if (-not [string]::IsNullOrWhiteSpace($InitToken) -or -not [string]::IsNullOrWhiteSpace($ActivationKey)) {
     Write-Host " Выполняю инициализацию ЛМ ЧЗ..."
 
     $headers = New-LmApiHeaders -AdminUser $AdminUser -AdminPassword $AdminPassword -ClientId $ClientId
     $initUrl = "http://127.0.0.1:$ApiPort/api/v1/init"
-    $body = @{ token = $InitToken } | ConvertTo-Json
+
+    if (-not [string]::IsNullOrWhiteSpace($InitToken) -and -not [string]::IsNullOrWhiteSpace($ActivationKey)) {
+        throw "Нельзя одновременно передавать InitToken и ActivationKey."
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Kpp) -and -not [string]::IsNullOrWhiteSpace($FiasId)) {
+        throw "Нельзя одновременно передавать Kpp и FiasId."
+    }
+
+    $bodyParams = @{}
+    if (-not [string]::IsNullOrWhiteSpace($InitToken)) {
+        $bodyParams["token"] = $InitToken
+    }
+    if (-not [string]::IsNullOrWhiteSpace($ActivationKey)) {
+        $bodyParams["activationKey"] = $ActivationKey
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Kpp)) {
+        $bodyParams["kpp"] = $Kpp
+    }
+    if (-not [string]::IsNullOrWhiteSpace($FiasId)) {
+        $bodyParams["fiasId"] = $FiasId
+    }
+
+    $body = $bodyParams | ConvertTo-Json
 
     try {
         Invoke-RestMethod -Uri $initUrl -Method Post -Headers $headers -ContentType "application/json" -Body $body
         Wait-LmInitialization -Headers $headers -ApiPort $ApiPort -TimeoutSeconds $InitWaitTimeoutSeconds -PollIntervalSeconds $InitPollIntervalSeconds
         Write-Host " Инициализация завершена."
     } catch {
-        throw "Ошибка инициализации через $initUrl : $($_.Exception.Message)"
+        $errorDetails = Get-HttpExceptionDetails -Exception $_.Exception
+        throw "Ошибка инициализации через $initUrl : $errorDetails"
     }
 }
